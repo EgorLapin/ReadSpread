@@ -6,7 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import com.example.readspread.ui.library.LibraryScreen
+import androidx.navigation.compose.rememberNavController
+import com.example.readspread.navigation.AppNavGraph
 import com.example.readspread.ui.theme.ReadSpreadTheme
 
 class MainActivity : ComponentActivity() {
@@ -15,16 +16,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ReadSpreadTheme {
-                // Surface нужен для корректного отображения фона темы
                 Surface(
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    LibraryScreen(
-                        onBookClick = { book ->
-                            // Пока просто выводим в лог при клике
-                            android.util.Log.d("MainActivity", "Clicked: ${book.title}")
-                        }
-                    )
+                    // ✅ Создаём NavController
+                    val navController = rememberNavController()
+
+                    // ✅ Используем NavGraph
+                    AppNavGraph(navController = navController)
                 }
             }
         }
