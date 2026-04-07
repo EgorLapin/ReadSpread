@@ -1,12 +1,18 @@
 plugins {
+    // 1. Сначала Android и Kotlin плагины (ОБЯЗАТЕЛЬНО)
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.android)
+
+    // 2. Потом плагины-обработчики (они ищут Android-конфигурацию)
+    alias(libs.plugins.hilt)
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.example.readspread"
     compileSdk {
-        version = release(36) {
+        version = release(34) {
             minorApiLevel = 1
         }
     }
@@ -14,7 +20,7 @@ android {
     defaultConfig {
         applicationId = "com.example.readspread"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
 
@@ -30,25 +36,59 @@ android {
             )
         }
     }
+
+    // ✅ ОДИН блок compileOptions с Java 17
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // ✅ Kotlin настройки (обязательно!)
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    // ✅ Compose настройки
     buildFeatures {
         compose = true
     }
+
+    // ✅ Compose Compiler версия (для Kotlin 1.9.22)
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
 }
 
+// ✅ ОДИН объединённый блок зависимостей
 dependencies {
+    // === Core Android ===
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+
+    // === Compose (используем BOM для управления версиями) ===
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.foundation.layout)
+    // === Navigation ===
+    implementation(libs.androidx.navigation.compose)
+
+    // === Room ===
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
+    // === Hilt ===
+    implementation(libs.google.hilt.android)
+    ksp(libs.google.hilt.compiler)
+
+    // === Coroutines ===
+    implementation(libs.kotlinx.coroutines.android)
+
+    // === Testing ===
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -56,5 +96,8 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
     implementation(libs.androidx.navigation.compose)
 }
