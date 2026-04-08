@@ -1,4 +1,4 @@
-package com.example.readspread
+package com.example.readspread.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
