@@ -34,11 +34,6 @@ class BookRepository(
     // Поиск книг
     fun searchBooks(query: String): Flow<List<Book>> = bookDao.searchBooks(query)
 
-    // Несинхронизированные книги
-    suspend fun getUnsyncedBooks(): List<Book> = withContext(Dispatchers.IO) {
-        bookDao.getUnsyncedBooks()
-    }
-
     // Проверка дубликатов по хэшу
     suspend fun getBookByHash(hash: String): Book? = withContext(Dispatchers.IO) {
         bookDao.getBookByHash(hash)
@@ -99,11 +94,6 @@ class BookRepository(
     // Обновление избранного
     suspend fun updateFavorite(bookId: Long, isFavorite: Boolean) = withContext(Dispatchers.IO) {
         bookDao.updateFavorite(bookId, isFavorite, System.currentTimeMillis())
-    }
-
-    // Обновление статуса синхронизации
-    suspend fun updateSyncStatus(bookId: Long, isSynced: Boolean) = withContext(Dispatchers.IO) {
-        bookDao.updateSyncStatus(bookId, isSynced)
     }
 
     // Статистика

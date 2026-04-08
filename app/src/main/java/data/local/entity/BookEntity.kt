@@ -49,9 +49,6 @@ data class Book(
     // Хэш файла для дедупликации
     val fileHash: String? = null,
 
-    // Синхронизация
-    val isSynced: Boolean = false,
-
     // Временные метки
     val addedAt: Long = System.currentTimeMillis(),
     val lastReadAt: Long? = null,

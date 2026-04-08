@@ -10,14 +10,21 @@ import data.local.entity.*
 @Database(
     entities = [
         Book::class,
+        ReadingProgress::class,
+        Bookmark::class,
+        Highlight::class,
+        User::class,
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun bookDao(): BookDao
-
+    abstract fun readingProgressDao(): ReadingProgressDao
+    abstract fun bookmarkDao(): BookmarkDao
+    abstract fun highlightDao(): HighlightDao
+    abstract fun userDao(): UserDao
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
