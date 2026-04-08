@@ -25,9 +25,6 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%'")
     fun searchBooks(query: String): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE isSynced = 0")
-    suspend fun getUnsyncedBooks(): List<Book>
-
     @Query("SELECT * FROM books WHERE fileHash = :hash")
     suspend fun getBookByHash(hash: String): Book?
 
@@ -54,10 +51,6 @@ interface BookDao {
 
     @Query("UPDATE books SET isFavorite = :isFavorite, updatedAt = :updatedAt WHERE id = :bookId")
     suspend fun updateFavorite(bookId: Long, isFavorite: Boolean, updatedAt: Long)
-
-    @Query("UPDATE books SET isSynced = :isSynced WHERE id = :bookId")
-    suspend fun updateSyncStatus(bookId: Long, isSynced: Boolean)
-
     @Query("SELECT COUNT(*) FROM books")
     suspend fun getBooksCount(): Int
 
