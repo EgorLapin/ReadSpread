@@ -23,7 +23,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".ui.BookActivity" />
+        <activity android:name=".ui.BookActivity" android:exported="true" />
     </application>
 
 </manifest>
