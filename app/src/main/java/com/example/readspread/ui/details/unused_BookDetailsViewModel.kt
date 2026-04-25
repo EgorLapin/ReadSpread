@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class BookDetailsViewModel @Inject constructor(
+class unused_BookDetailsViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
