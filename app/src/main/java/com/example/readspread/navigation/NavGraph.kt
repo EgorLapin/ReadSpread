@@ -27,6 +27,7 @@ fun AppNavGraph(
                 onBookClick = { book ->
                     // Переход на экран деталей книги
                     navController.navigate(AppDestinations.bookDetailsRoute(book.id))
+                    //поставить переход на bookactivity с передачей book id через intent
                 }
             )
         }

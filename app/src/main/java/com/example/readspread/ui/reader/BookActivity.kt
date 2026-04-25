@@ -54,7 +54,6 @@ class BookActivity : ComponentActivity() {
 
         val bookId = intent.getLongExtra("BOOK_ID", 0L)
         viewModel.setBookId(bookId)
-
         setContent {
             BookReaderScreen(viewModel)
         }
