@@ -1,5 +1,7 @@
 package com.example.readspread.ui
+import androidx.compose.ui.platform.LocalDensity
 
+import androidx.compose.ui.layout.onSizeChanged
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,8 +37,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,38 +74,24 @@ fun BookReaderScreen(viewModel: ReaderViewModel) {
 
     when (val state = uiState) {
         is UiState.Loading -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         }
-
         is UiState.Error -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Error: ${state.message}",
-                    color = Color.Red,
-                    fontSize = 16.sp
-                )
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Error: ${state.message}", color = Color.Red, fontSize = 16.sp)
             }
         }
-
         is UiState.Success -> {
             BookContent(
                 book = state.book,
                 fullContent = state.content,
-                onPageChanged = { newPage ->
-                    // TODO: Call repository to update current page in database
-                    // repository.updateBookCurrentPage(state.book.id, newPage)
+                onPageChanged = { newPage, totalPages ->
+                    // TODO: repository.updateBookPageAndProgress(...)
                 },
                 onFontSizeChanged = { newSize ->
-                    // TODO: Save font size preference for this book or globally
-                    // repository.updateBookFontSize(state.book.id, newSize)
+                    // TODO: repository.updateFontSize(...)
                 }
             )
         }
@@ -108,39 +102,138 @@ fun BookReaderScreen(viewModel: ReaderViewModel) {
 fun BookContent(
     book: data.local.entity.Book,
     fullContent: String,
-    onPageChanged: (Int) -> Unit,
-    onFontSizeChanged: (Int) -> Unit
+    onPageChanged: (page: Int, totalPages: Int) -> Unit,
+    onFontSizeChanged: (fontSize: Int) -> Unit
 ) {
-    // Light blue color definition
-    val lightBlue = Color(0xFFADD8E6)  // Light blue
-    val lightBlueTransparent = lightBlue.copy(alpha = 0.9f)
-
-    // Split content into pages (simple paragraph-based pagination)
-    val pages = remember(fullContent) {
-        if (fullContent.isBlank()) {
-            listOf("No content available")
-        } else {
-            fullContent.split("\n\n").filter { it.isNotBlank() }
-        }
-    }
-
-    var pageNumber by remember { mutableIntStateOf(book.currentPage - 1) }
+    val lightBlue = Color(0xFFADD8E6)
     var fontSize by remember { mutableIntStateOf(20) }
     var selectedFont by remember { mutableStateOf(FontFamily.Default) }
     var fontSizeMenuExpanded by remember { mutableStateOf(false) }
-
-    // Font size options
     val fontSizeOptions = listOf(12, 14, 16, 18, 20, 22, 24, 28, 32)
 
-    val currentPageContent = if (pages.isNotEmpty() && pageNumber in pages.indices) {
-        pages[pageNumber]
-    } else {
-        "No content"
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+
+    val textStyle = TextStyle(
+        fontSize = fontSize.sp,
+        fontFamily = selectedFont,
+        lineHeight = (fontSize * 1.4).sp
+    )
+
+    val annotatedContent = remember(fullContent) {
+        AnnotatedString(fullContent)
     }
+
+    var contentSize by remember { mutableStateOf(IntSize.Zero) }
+    var currentPage by remember { mutableIntStateOf(0) }
+    var totalPages by remember { mutableIntStateOf(1) }
+
+    // Character offset of the first character on the **currently visible page**
+    // This is updated every time the user flips a page, so it always reflects
+    // where the user was last reading.
+    var lastReadingOffset by remember { mutableIntStateOf(0) }
+
+    val horizontalPadding = 16.dp
+    val verticalPadding = 8.dp
+
+    /* ---- Reliable pagination ---- */
+    val pages = remember(annotatedContent, textStyle, contentSize) {
+        if (contentSize.width <= 0 || contentSize.height <= 0) {
+            listOf(AnnotatedString(""))
+        } else {
+            val availableWidthPx = with(density) { contentSize.width - horizontalPadding.toPx() * 2 }
+            val availableHeightPx = with(density) { contentSize.height - verticalPadding.toPx() * 2 }
+
+            val fullLayout = textMeasurer.measure(
+                text = annotatedContent,
+                style = textStyle,
+                maxLines = Int.MAX_VALUE,
+                constraints = Constraints(maxWidth = availableWidthPx.toInt())
+            )
+
+            val totalLines = fullLayout.lineCount
+            if (totalLines == 0) return@remember listOf(AnnotatedString(""))
+
+            data class Line(val start: Int, val end: Int, val bottom: Float)
+            val lines = (0 until totalLines).map { i ->
+                Line(
+                    start = fullLayout.getLineStart(i),
+                    end = fullLayout.getLineEnd(i),
+                    bottom = fullLayout.getLineBottom(i)
+                )
+            }
+
+            val pageList = mutableListOf<AnnotatedString>()
+            var pageTopY = 0f
+            var lineIndex = 0
+
+            while (lineIndex < lines.size) {
+                val firstLineOfPage = lines[lineIndex]
+                val pageStartChar = firstLineOfPage.start
+                var lastFits = lineIndex
+
+                while (lastFits < lines.size) {
+                    val l = lines[lastFits]
+                    val heightFromTop = l.bottom - pageTopY
+                    if (heightFromTop <= availableHeightPx) {
+                        lastFits++
+                    } else {
+                        break
+                    }
+                }
+
+                val lastFittingIndex = lastFits - 1
+                if (lastFittingIndex < lineIndex) {
+                    // Force at least one line (shouldn't happen)
+                    val forcedLine = lines[lineIndex]
+                    pageList.add(annotatedContent.subSequence(pageStartChar, forcedLine.end))
+                    pageTopY = forcedLine.bottom
+                    lineIndex++
+                } else {
+                    val lastLine = lines[lastFittingIndex]
+                    pageList.add(annotatedContent.subSequence(pageStartChar, lastLine.end))
+                    pageTopY = lastLine.bottom
+                    lineIndex = lastFittingIndex + 1
+                }
+            }
+
+            pageList.ifEmpty { listOf(AnnotatedString("")) }
+        }
+    }
+
+    // Pre‑calculate the character offset at which each page starts.
+    val pageOffsets = remember(pages) {
+        val offsets = mutableListOf<Int>()
+        var offset = 0
+        for (page in pages) {
+            offsets.add(offset)
+            offset += page.text.length
+        }
+        offsets
+    }
+
+    totalPages = pages.size.coerceAtLeast(1)
+
+    // ---- Preserve reading position when pages change (font size, orientation, etc.) ----
+    LaunchedEffect(pages) {
+        if (pages.isNotEmpty() && pageOffsets.isNotEmpty()) {
+            val targetPage = pageOffsets
+                .indexOfLast { it <= lastReadingOffset }
+                .coerceIn(0, totalPages - 1)
+            currentPage = targetPage
+        }
+    }
+
+    // Notify parent about the new page (only for saving progress)
+    LaunchedEffect(currentPage, totalPages) {
+        onPageChanged(currentPage + 1, totalPages)
+    }
+
+    val pageText = pages.getOrElse(currentPage) { AnnotatedString("") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Book title with light blue background
+            // Title bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -148,128 +241,107 @@ fun BookContent(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = book.title,
-                    fontSize = 24.sp,
-                    color = Color.White
-                )
+                Text(text = book.title, fontSize = 24.sp, color = Color.White)
             }
 
-            // Main content area
+            // Content area
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
+                    .onSizeChanged { contentSize = it }
             ) {
-                Text(
-                    text = currentPageContent,
-                    fontSize = fontSize.sp,
-                    style = TextStyle(fontFamily = selectedFont),
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (contentSize.width > 0 && contentSize.height > 0) {
+                    Text(
+                        text = pageText,
+                        style = textStyle,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+                    )
+                }
             }
-        }
 
-        // Bottom area with light blue background containing font dropdown and page counter
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(lightBlue)
-                .padding(vertical = 12.dp, horizontal = 16.dp)
-        ) {
-            // Font size dropdown (centered)
+            // Bottom bar
             Row(
-                modifier = Modifier.align(Alignment.Center),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(lightBlue)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "$fontSize sp",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    modifier = Modifier.clickable { fontSizeMenuExpanded = true }
-                )
-                Icon(
-                    imageVector = Icons.Default.ArrowDropDown,
-                    contentDescription = "Select Font Size",
-                    tint = Color.White,
-                    modifier = Modifier.clickable { fontSizeMenuExpanded = true }
-                )
-
-                DropdownMenu(
-                    expanded = fontSizeMenuExpanded,
-                    onDismissRequest = { fontSizeMenuExpanded = false }
+                IconButton(
+                    onClick = {
+                        if (currentPage > 0) {
+                            currentPage--
+                            lastReadingOffset = pageOffsets.getOrElse(currentPage) { 0 }
+                        }
+                    },
+                    enabled = currentPage > 0,
+                    modifier = Modifier.size(48.dp)
                 ) {
-                    fontSizeOptions.forEach { size ->
-                        DropdownMenuItem(
-                            text = { Text("$size sp") },
-                            onClick = {
-                                fontSize = size
-                                onFontSizeChanged(size)
-                                fontSizeMenuExpanded = false
-                            }
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Previous Page",
+                        tint = if (currentPage > 0) Color.White else Color.LightGray
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "$fontSize sp",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            modifier = Modifier.clickable { fontSizeMenuExpanded = true }
                         )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Font size",
+                            tint = Color.White,
+                            modifier = Modifier.clickable { fontSizeMenuExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = fontSizeMenuExpanded,
+                            onDismissRequest = { fontSizeMenuExpanded = false }
+                        ) {
+                            fontSizeOptions.forEach { size ->
+                                DropdownMenuItem(
+                                    text = { Text("$size sp") },
+                                    onClick = {
+                                        fontSize = size
+                                        onFontSizeChanged(size)
+                                        fontSizeMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
                     }
+                    Text(
+                        text = "${currentPage + 1} / $totalPages",
+                        fontSize = 14.sp,
+                        color = Color.White
+                    )
+                }
+
+                IconButton(
+                    onClick = {
+                        if (currentPage < totalPages - 1) {
+                            currentPage++
+                            lastReadingOffset = pageOffsets.getOrElse(currentPage) { 0 }
+                        }
+                    },
+                    enabled = currentPage < totalPages - 1,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = "Next Page",
+                        tint = if (currentPage < totalPages - 1) Color.White else Color.LightGray
+                    )
                 }
             }
-
-            // Page counter (centered below font dropdown or integrated)
-            if (pages.isNotEmpty()) {
-                Text(
-                    text = "${pageNumber + 1}/${pages.size}",
-                    fontSize = 14.sp,
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(top = 40.dp)  // Position below font dropdown
-                )
-            }
-        }
-
-        // Previous page button (bottom-left corner)
-        IconButton(
-            onClick = {
-                if (pageNumber > 0) {
-                    pageNumber--
-                    onPageChanged(pageNumber + 1)
-                }
-            },
-            enabled = pageNumber > 0,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 16.dp)
-                .size(56.dp)
-                .background(lightBlueTransparent, shape = androidx.compose.foundation.shape.CircleShape)
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Previous Page",
-                tint = Color.White,
-                modifier = Modifier.size(32.dp)
-            )
-        }
-
-        // Next page button (bottom-right corner)
-        IconButton(
-            onClick = {
-                if (pageNumber < pages.size - 1) {
-                    pageNumber++
-                    onPageChanged(pageNumber + 1)
-                }
-            },
-            enabled = pageNumber < pages.size - 1,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 16.dp)
-                .size(56.dp)
-                .background(lightBlueTransparent, shape = androidx.compose.foundation.shape.CircleShape)
-        ) {
-            Icon(
-                imageVector = Icons.Default.ArrowForward,
-                contentDescription = "Next Page",
-                tint = Color.White,
-                modifier = Modifier.size(32.dp)
-            )
         }
     }
 }
