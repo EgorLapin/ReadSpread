@@ -8,33 +8,14 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,6 +34,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.readspread.ui.reader.ReaderViewModel.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import data.local.entity.Book
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
+import androidx.compose.runtime.mutableStateListOf
+import kotlin.math.min
 
 @AndroidEntryPoint
 class BookActivity : ComponentActivity() {
@@ -123,9 +108,7 @@ fun BookContent(
         lineHeight = (fontSize * 1.4).sp
     )
 
-    val annotatedContent = remember(fullContent) {
-        AnnotatedString(fullContent)
-    }
+    val annotatedContent = remember(fullContent) { AnnotatedString(fullContent) }
 
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     var currentPage by remember { mutableIntStateOf(0) }
@@ -134,6 +117,14 @@ fun BookContent(
 
     val horizontalPadding = 16.dp
     val verticalPadding = 8.dp
+
+    /* ---------------- Bookmark state ----------------
+       Store bookmarks as character offsets so that when font size changes
+       (and pagination changes), the bookmark still points to the same spot
+       and its displayed page number updates automatically.
+     */
+    val bookmarks = remember { mutableStateListOf<Int>() } // offsets into fullContent
+    var bookmarksMenuExpanded by remember { mutableStateOf(false) }
 
     /* ---- Reliable pagination ---- */
     val pages = remember(annotatedContent, textStyle, contentSize) {
@@ -174,11 +165,7 @@ fun BookContent(
                 while (lastFits < lines.size) {
                     val l = lines[lastFits]
                     val heightFromTop = l.bottom - pageTopY
-                    if (heightFromTop <= availableHeightPx) {
-                        lastFits++
-                    } else {
-                        break
-                    }
+                    if (heightFromTop <= availableHeightPx) lastFits++ else break
                 }
 
                 val lastFittingIndex = lastFits - 1
@@ -211,6 +198,15 @@ fun BookContent(
 
     totalPages = pages.size.coerceAtLeast(1)
 
+    fun pageIndexForOffset(offset: Int): Int {
+        if (pageOffsets.isEmpty()) return 0
+        val maxIndex = (annotatedContent.length - 1).coerceAtLeast(0)
+        val safe = offset.coerceIn(0, maxIndex)
+        return pageOffsets.indexOfLast { it <= safe }
+            .coerceAtLeast(0)
+            .coerceAtMost(totalPages - 1)
+    }
+
     LaunchedEffect(pages) {
         if (pages.isNotEmpty() && pageOffsets.isNotEmpty()) {
             val targetPage = pageOffsets
@@ -225,6 +221,16 @@ fun BookContent(
     }
 
     val pageText = pages.getOrElse(currentPage) { AnnotatedString("") }
+
+    // Current page start offset (bookmark target)
+    val currentPageStartOffset = pageOffsets.getOrElse(currentPage) { 0 }
+    val isCurrentPageBookmarked = remember(bookmarks, currentPageStartOffset) {
+        bookmarks.contains(currentPageStartOffset)
+    }
+
+    // Scale UI text sizes with selected font size
+    val controlsTextSize = (fontSize * 0.75f).coerceIn(12f, 20f).sp
+    val pageIndicatorTextSize = (fontSize * 0.70f).coerceIn(11f, 18f).sp
 
     // ── Swipe gesture with visual feedback ──
     var dragOffset by remember { mutableFloatStateOf(0f) }
@@ -253,12 +259,10 @@ fun BookContent(
                             onDragEnd = {
                                 when {
                                     dragOffset > swipeThresholdPx && currentPage > 0 -> {
-                                        // Swiped right - go to previous page
                                         currentPage--
                                         lastReadingOffset = pageOffsets.getOrElse(currentPage) { 0 }
                                     }
                                     dragOffset < -swipeThresholdPx && currentPage < totalPages - 1 -> {
-                                        // Swiped left - go to next page
                                         currentPage++
                                         lastReadingOffset = pageOffsets.getOrElse(currentPage) { 0 }
                                     }
@@ -311,11 +315,12 @@ fun BookContent(
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Font size selector
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = "$fontSize sp",
                             color = Color.White,
-                            fontSize = 16.sp,
+                            fontSize = controlsTextSize,
                             modifier = Modifier.clickable { fontSizeMenuExpanded = true }
                         )
                         Icon(
@@ -340,9 +345,95 @@ fun BookContent(
                             }
                         }
                     }
+
+                    // Bookmark controls
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                // Toggle bookmark at current page start
+                                if (isCurrentPageBookmarked) {
+                                    bookmarks.remove(currentPageStartOffset)
+                                } else {
+                                    if (!bookmarks.contains(currentPageStartOffset)) {
+                                        bookmarks.add(currentPageStartOffset)
+                                        bookmarks.sort()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isCurrentPageBookmarked) {
+                                    Icons.Default.Bookmark
+                                } else {
+                                    Icons.Default.BookmarkAdd
+                                },
+                                contentDescription = "Toggle bookmark",
+                                tint = Color.White
+                            )
+                        }
+
+                        Text(
+                            text = "Bookmarks",
+                            color = Color.White,
+                            fontSize = controlsTextSize,
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .clickable { bookmarksMenuExpanded = true }
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Open bookmarks",
+                            tint = Color.White,
+                            modifier = Modifier.clickable { bookmarksMenuExpanded = true }
+                        )
+
+                        DropdownMenu(
+                            expanded = bookmarksMenuExpanded,
+                            onDismissRequest = { bookmarksMenuExpanded = false }
+                        ) {
+                            val sorted = bookmarks.sorted()
+                            if (sorted.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No bookmarks") },
+                                    onClick = { bookmarksMenuExpanded = false },
+                                    enabled = false
+                                )
+                            } else {
+                                sorted.forEach { offset ->
+                                    val page = pageIndexForOffset(offset) + 1
+
+                                    // optional small preview snippet (safe)
+                                    val start = offset.coerceIn(0, annotatedContent.length.coerceAtLeast(1) - 1)
+                                    val end = min(start + 40, annotatedContent.length)
+                                    val snippet = annotatedContent.text
+                                        .substring(start, end)
+                                        .replace('\n', ' ')
+                                        .trim()
+
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = "Page $page — $snippet",
+                                                fontSize = controlsTextSize
+                                            )
+                                        },
+                                        onClick = {
+                                            val target = pageIndexForOffset(offset)
+                                            currentPage = target
+                                            lastReadingOffset = pageOffsets.getOrElse(target) { 0 }
+                                            bookmarksMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Page indicator (scaled with font size)
                     Text(
                         text = "${currentPage + 1} / $totalPages",
-                        fontSize = 14.sp,
+                        fontSize = pageIndicatorTextSize,
                         color = Color.White
                     )
                 }
