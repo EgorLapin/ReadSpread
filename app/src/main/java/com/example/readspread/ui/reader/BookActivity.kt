@@ -1,7 +1,5 @@
-package com.example.readspread.ui
-import androidx.compose.ui.platform.LocalDensity
+package com.example.readspread.ui.reader
 
-import androidx.compose.ui.layout.onSizeChanged
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,12 +7,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,7 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -47,13 +50,12 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.readspread.ui.reader.ReaderViewModel
 import com.example.readspread.ui.reader.ReaderViewModel.UiState
 import dagger.hilt.android.AndroidEntryPoint
+import data.local.entity.Book
 
 @AndroidEntryPoint
 class BookActivity : ComponentActivity() {
-
     private val viewModel: ReaderViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,12 +102,12 @@ fun BookReaderScreen(viewModel: ReaderViewModel) {
 
 @Composable
 fun BookContent(
-    book: data.local.entity.Book,
+    book: Book,
     fullContent: String,
     onPageChanged: (page: Int, totalPages: Int) -> Unit,
     onFontSizeChanged: (fontSize: Int) -> Unit
 ) {
-    val lightBlue = Color(0xFFADD8E6)
+    val lightBlue = Color(0xffEAAAFF)
     var fontSize by remember { mutableIntStateOf(20) }
     var selectedFont by remember { mutableStateOf(FontFamily.Default) }
     var fontSizeMenuExpanded by remember { mutableStateOf(false) }
@@ -127,10 +129,6 @@ fun BookContent(
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     var currentPage by remember { mutableIntStateOf(0) }
     var totalPages by remember { mutableIntStateOf(1) }
-
-    // Character offset of the first character on the **currently visible page**
-    // This is updated every time the user flips a page, so it always reflects
-    // where the user was last reading.
     var lastReadingOffset by remember { mutableIntStateOf(0) }
 
     val horizontalPadding = 16.dp
@@ -184,7 +182,6 @@ fun BookContent(
 
                 val lastFittingIndex = lastFits - 1
                 if (lastFittingIndex < lineIndex) {
-                    // Force at least one line (shouldn't happen)
                     val forcedLine = lines[lineIndex]
                     pageList.add(annotatedContent.subSequence(pageStartChar, forcedLine.end))
                     pageTopY = forcedLine.bottom
@@ -201,7 +198,6 @@ fun BookContent(
         }
     }
 
-    // Pre‑calculate the character offset at which each page starts.
     val pageOffsets = remember(pages) {
         val offsets = mutableListOf<Int>()
         var offset = 0
@@ -214,7 +210,6 @@ fun BookContent(
 
     totalPages = pages.size.coerceAtLeast(1)
 
-    // ---- Preserve reading position when pages change (font size, orientation, etc.) ----
     LaunchedEffect(pages) {
         if (pages.isNotEmpty() && pageOffsets.isNotEmpty()) {
             val targetPage = pageOffsets
@@ -224,16 +219,18 @@ fun BookContent(
         }
     }
 
-    // Notify parent about the new page (only for saving progress)
     LaunchedEffect(currentPage, totalPages) {
         onPageChanged(currentPage + 1, totalPages)
     }
 
     val pageText = pages.getOrElse(currentPage) { AnnotatedString("") }
 
+    // ── Swipe gesture with visual feedback ──
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    val swipeThresholdPx = with(density) { 100.dp.toPx() }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Title bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -244,25 +241,49 @@ fun BookContent(
                 Text(text = book.title, fontSize = 24.sp, color = Color.White)
             }
 
-            // Content area
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .onSizeChanged { contentSize = it }
+                    .pointerInput(currentPage, totalPages) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragOffset = 0f },
+                            onDragEnd = {
+                                when {
+                                    dragOffset > swipeThresholdPx && currentPage > 0 -> {
+                                        // Swiped right - go to previous page
+                                        currentPage--
+                                        lastReadingOffset = pageOffsets.getOrElse(currentPage) { 0 }
+                                    }
+                                    dragOffset < -swipeThresholdPx && currentPage < totalPages - 1 -> {
+                                        // Swiped left - go to next page
+                                        currentPage++
+                                        lastReadingOffset = pageOffsets.getOrElse(currentPage) { 0 }
+                                    }
+                                }
+                                dragOffset = 0f
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                dragOffset += dragAmount
+                                change.consume()
+                            }
+                        )
+                    }
             ) {
                 if (contentSize.width > 0 && contentSize.height > 0) {
+                    val visualOffset = with(density) { dragOffset.toDp() }
                     Text(
                         text = pageText,
                         style = textStyle,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(horizontal = horizontalPadding, vertical = verticalPadding)
+                            .offset(x = visualOffset)
                     )
                 }
             }
 
-            // Bottom bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
