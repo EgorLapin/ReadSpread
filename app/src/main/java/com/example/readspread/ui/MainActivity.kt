@@ -35,8 +35,9 @@ class MainActivity : ComponentActivity() {
                         author = "Автор",
                         filePath = "/dev/null",
                         format = "TXT",
-                        totalPages = 100,
-                        description = "Это тестовая книга для проверки."
+                        totalPages = 101,
+                        description = "Это тестовая книга для проверки.",
+                        coverImageUrl = null
                     )
                 )
             }

@@ -28,4 +28,10 @@ interface ReadingProgressDao {
 
     @Query("DELETE FROM reading_progress WHERE bookId = :bookId")
     suspend fun deleteProgressForBook(bookId: Long)
-}
+
+    @Query("UPDATE reading_progress SET fontSize = :fontSize WHERE bookId = :bookId")
+    suspend fun updateFontSize(bookId: Long, fontSize: Int)
+
+    @Query("UPDATE reading_progress SET currentPage = :currentPage , progressPercent = :progress WHERE bookId = :bookId")
+    suspend fun updatePageAndProgress(bookId: Long, currentPage: Int, progress: Float)
+    }
