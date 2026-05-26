@@ -92,11 +92,10 @@ fun BookCover(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val imageUrl = book.coverImageUrl ?: book.coverPath
+    val imageUrl = book.coverPath          // исправлено: убрано coverImageUrl
     var isLoadingError by remember { mutableStateOf(false) }
 
     if (!imageUrl.isNullOrEmpty() && !isLoadingError) {
-        // Пытаемся загрузить изображение
         AsyncImage(
             model = ImageRequest.Builder(context)
                 .data(imageUrl)
@@ -108,11 +107,31 @@ fun BookCover(
             onError = { isLoadingError = true }
         )
     } else {
-        // Показываем заглушку
         BookCoverPlaceholder(
             title = book.title,
             author = book.author,
             modifier = modifier
+        )
+    }
+}
+
+@Composable
+fun BookCoverPlaceholder(
+    title: String,
+    author: String,
+    modifier: Modifier = Modifier
+) {
+    val placeholderColor = MaterialTheme.colorScheme.primaryContainer
+    Box(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.small)
+            .background(placeholderColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title.firstOrNull()?.toString() ?: "",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
         )
     }
 }
