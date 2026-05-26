@@ -10,6 +10,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.readspread.ui.details.BookDetailsScreen
 import com.example.readspread.ui.library.LibraryScreen
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
+import com.example.readspread.ui.BookActivity
 
 @Composable
 fun AppNavGraph(
@@ -22,11 +25,23 @@ fun AppNavGraph(
         modifier = modifier
     ) {
         // Экран библиотеки
+//        composable(route = AppDestinations.LIBRARY) {
+//            LibraryScreen(
+//                onBookClick = { book ->
+//                    // Переход на экран деталей книги
+//                    navController.navigate(AppDestinations.bookDetailsRoute(book.id))
+//                    //поставить переход на bookactivity с передачей book id через intent
+//                }
+//            )
+//        }
         composable(route = AppDestinations.LIBRARY) {
+            val context = LocalContext.current
             LibraryScreen(
                 onBookClick = { book ->
-                    // Переход на экран деталей книги
-                    navController.navigate(AppDestinations.bookDetailsRoute(book.id))
+                    val intent = Intent(context, BookActivity::class.java).apply {
+                        putExtra("BOOK_ID", book.id)
+                    }
+                    context.startActivity(intent)
                 }
             )
         }
