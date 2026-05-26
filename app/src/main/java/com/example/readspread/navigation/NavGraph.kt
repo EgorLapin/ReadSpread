@@ -12,7 +12,7 @@ import com.example.readspread.ui.details.BookDetailsScreen
 import com.example.readspread.ui.library.LibraryScreen
 import android.content.Intent
 import androidx.compose.ui.platform.LocalContext
-import com.example.readspread.ui.BookActivity
+import com.example.readspread.ui.reader.BookActivity
 
 @Composable
 fun AppNavGraph(
