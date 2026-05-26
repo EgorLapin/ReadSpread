@@ -28,6 +28,9 @@ data class Book(
     // Путь к обложке
     val coverPath: String? = null,
 
+    // URL обложки (для онлайн-источников)
+    val coverImageUrl: String? = null, // Добавлено новое поле
+
     // Размер файла в байтах
     val fileSize: Long = 0,
 
