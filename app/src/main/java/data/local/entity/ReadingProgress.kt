@@ -38,6 +38,8 @@ data class ReadingProgress(
     // Название текущей главы
     val chapterTitle: String? = null,
 
+    val fontSize: Int = 16,
+
     // Временные метки
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),

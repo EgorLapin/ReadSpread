@@ -8,19 +8,18 @@ import data.local.domain.repository.BookRepository
 import data.local.entity.Book
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class unused_BookDetailsViewModel @Inject constructor(
+class BookDetailsViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val bookId: Long = checkNotNull(savedStateHandle["bookId"])
 
-    private val _uiState = MutableStateFlow(BookDetailsUiState())
+    private val _uiState = MutableStateFlow(UiState())
     val uiState = _uiState.asStateFlow()
 
     init {
@@ -29,40 +28,46 @@ class unused_BookDetailsViewModel @Inject constructor(
 
     private fun loadBook() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.value = _uiState.value.copy(isLoading = true)
             val book = bookRepository.getBookByIdSync(bookId)
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    book = book,
-                    error = if (book == null) "Книга не найдена" else null
-                )
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                book = book,
+                error = if (book == null) "Книга не найдена" else null
+            )
+        }
+    }
+
+    fun updateCoverPath(newPath: String) {
+        viewModelScope.launch {
+            _uiState.value.book?.let { book ->
+                val updatedBook = book.copy(coverPath = newPath)
+                bookRepository.updateBook(updatedBook)
+                _uiState.value = _uiState.value.copy(book = updatedBook)
             }
         }
     }
 
     fun toggleFavorite() {
-        val currentBook = _uiState.value.book ?: return
-        val newFavorite = !currentBook.isFavorite
+        val book = _uiState.value.book ?: return
+        val newFavorite = !book.isFavorite
         viewModelScope.launch {
-            bookRepository.updateFavorite(currentBook.id, newFavorite)
-            _uiState.update { state ->
-                state.copy(
-                    book = state.book?.copy(isFavorite = newFavorite)
-                )
-            }
+            bookRepository.updateFavorite(book.id, newFavorite)
+            _uiState.value = _uiState.value.copy(
+                book = book.copy(isFavorite = newFavorite)
+            )
         }
     }
 
-    fun deleteBook(onSuccess: () -> Unit) {
+    fun deleteBook(onDeleted: () -> Unit) {
         val book = _uiState.value.book ?: return
         viewModelScope.launch {
             bookRepository.deleteBook(book)
-            onSuccess()
+            onDeleted()
         }
     }
 
-    data class BookDetailsUiState(
+    data class UiState(
         val isLoading: Boolean = false,
         val book: Book? = null,
         val error: String? = null
