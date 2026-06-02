@@ -20,7 +20,9 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -327,17 +329,19 @@ fun BookContent(
     var dragOffset by remember { mutableFloatStateOf(0f) }
     val swipeThresholdPx = with(density) { 100.dp.toPx() }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(lightBlue)
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = book.title, fontSize = 24.sp, color = Color.White)
-        }
+    var showControls by rememberSaveable { mutableStateOf(false) }
 
+    // Main layout: overlay bars on top of the reader text
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures { showControls = !showControls }
+            }
+    ) {
+        // ---- Reader area (text) ----
+        // Padded for system bars so that the first and last lines are never obstructed.
+        // The overlays (title bar / bottom controls) will appear inside these padding areas.
         val readerModifier = if (readerMode == ReaderMode.Pages) {
             Modifier.pointerInput(currentPage, totalPages) {
                 detectHorizontalDragGestures(
@@ -346,7 +350,6 @@ fun BookContent(
                         when {
                             dragOffset > swipeThresholdPx && currentPage > 0 ->
                                 goToPage(currentPage - 1)
-
                             dragOffset < -swipeThresholdPx && currentPage < totalPages - 1 ->
                                 goToPage(currentPage + 1)
                         }
@@ -364,14 +367,14 @@ fun BookContent(
 
         Box(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .statusBarsPadding()          // top inset
+                .navigationBarsPadding()      // bottom inset
                 .onSizeChanged { contentSize = it }
                 .then(readerModifier)
         ) {
             if (readerMode == ReaderMode.Pages) {
                 val visualOffset = with(density) { dragOffset.toDp() }
-
                 Text(
                     text = pageText,
                     style = textStyle,
@@ -405,221 +408,218 @@ fun BookContent(
             }
         }
 
-        Row(
+        // ---- Top title bar (shown only when controls toggled) ----
+        // It sits inside the status bar inset area, overlapping the text without shifting it.
+        if (showControls) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .background(lightBlue)
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = book.title, fontSize = 24.sp, color = Color.White)
+            }
+        }
+
+        // ---- Bottom overlay (always‑visible counter + optional controls) ----
+        // The background fills the navigation bar inset area and extends upward as needed.
+        // When controls are shown, they overlap the text above; the counter always stays at the very bottom.
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
                 .background(lightBlue)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()
         ) {
-            if (readerMode == ReaderMode.Pages) {
-                IconButton(
-                    onClick = { if (currentPage > 0) goToPage(currentPage - 1) },
-                    enabled = currentPage > 0,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Previous Page",
-                        tint = if (currentPage > 0) Color.White else Color.LightGray
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.size(48.dp))
-            }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$fontSize sp",
-                        color = Color.White,
-                        fontSize = controlsTextSize,
-                        modifier = Modifier.clickable { fontSizeMenuExpanded = true }
-                    )
-
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Font size",
-                        tint = Color.White,
-                        modifier = Modifier.clickable { fontSizeMenuExpanded = true }
-                    )
-
-                    DropdownMenu(
-                        expanded = fontSizeMenuExpanded,
-                        onDismissRequest = { fontSizeMenuExpanded = false }
-                    ) {
-                        fontSizeOptions.forEach { size ->
-                            DropdownMenuItem(
-                                text = { Text("$size sp") },
-                                onClick = {
-                                    fontSize = size
-                                    onFontSizeChanged(size)
-                                    if (readerMode == ReaderMode.Scroll) {
-                                        pendingScrollOffset = lastReadingOffset
-                                    }
-                                    fontSizeMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "Листание",
-                        color = Color.White,
-                        fontSize = controlsTextSize
-                    )
-
-                    Switch(
-                        checked = readerMode == ReaderMode.Scroll,
-                        onCheckedChange = { scroll ->
-                            if (readerMode == ReaderMode.Pages) {
-                                lastReadingOffset = currentPageStartOffset
-                            }
-
-                            readerMode =
-                                if (scroll) ReaderMode.Scroll else ReaderMode.Pages
-
-                            if (scroll) pendingScrollOffset = lastReadingOffset
-                        },
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-
-                    Text(
-                        text = "Скролл",
-                        color = Color.White,
-                        fontSize = controlsTextSize
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = {
-                            if (isCurrentBookmarked) {
-                                bookmarks.remove(currentBookmarkOffset)
-                            } else {
-                                bookmarks.add(currentBookmarkOffset)
-                                bookmarks.sort()
-                            }
-                        },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isCurrentBookmarked) {
-                                Icons.Default.Bookmark
-                            } else {
-                                Icons.Default.BookmarkAdd
-                            },
-                            contentDescription = "Bookmark",
-                            tint = Color.White
-                        )
-                    }
-
-                    Text(
-                        text = "Закладки",
-                        color = Color.White,
-                        fontSize = controlsTextSize,
+            Column {
+                // Controls row (arrows, font size, mode switch, bookmarks) – only when toggled
+                if (showControls) {
+                    Row(
                         modifier = Modifier
-                            .padding(start = 4.dp)
-                            .clickable { bookmarksMenuExpanded = true }
-                    )
-
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Open bookmarks",
-                        tint = Color.White,
-                        modifier = Modifier.clickable { bookmarksMenuExpanded = true }
-                    )
-
-                    DropdownMenu(
-                        expanded = bookmarksMenuExpanded,
-                        onDismissRequest = { bookmarksMenuExpanded = false }
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (bookmarks.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("Нет закладок") },
-                                onClick = { bookmarksMenuExpanded = false },
-                                enabled = false
-                            )
-                        } else {
-                            bookmarks.sorted().forEach { offset ->
-                                val start = offset.coerceIn(
-                                    0,
-                                    fullContent.length.coerceAtLeast(1) - 1
-                                )
-                                val end = min(start + 40, fullContent.length)
-                                val snippet = fullContent
-                                    .substring(start, end)
-                                    .replace('\n', ' ')
-                                    .trim()
-
-                                val label = if (readerMode == ReaderMode.Pages) {
-                                    "Страница ${pageIndexForOffset(offset) + 1}"
-                                } else {
-                                    val percent =
-                                        if (fullContent.isEmpty()) 0
-                                        else offset * 100 / fullContent.length
-                                    "$percent%"
-                                }
-
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = "$label — $snippet",
-                                            fontSize = controlsTextSize
-                                        )
-                                    },
-                                    onClick = {
-                                        lastReadingOffset = offset
-
-                                        if (readerMode == ReaderMode.Pages) {
-                                            currentPage = pageIndexForOffset(offset)
-                                        } else {
-                                            pendingScrollOffset = offset
-                                        }
-
-                                        bookmarksMenuExpanded = false
-                                    }
+                        if (readerMode == ReaderMode.Pages) {
+                            IconButton(
+                                onClick = { if (currentPage > 0) goToPage(currentPage - 1) },
+                                enabled = currentPage > 0,
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowBack,
+                                    contentDescription = "Previous Page",
+                                    tint = if (currentPage > 0) Color.White else Color.LightGray
                                 )
                             }
+                        } else {
+                            Spacer(modifier = Modifier.size(48.dp))
+                        }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "$fontSize sp",
+                                    color = Color.White,
+                                    fontSize = controlsTextSize,
+                                    modifier = Modifier.clickable { fontSizeMenuExpanded = true }
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Font size",
+                                    tint = Color.White,
+                                    modifier = Modifier.clickable { fontSizeMenuExpanded = true }
+                                )
+                                DropdownMenu(
+                                    expanded = fontSizeMenuExpanded,
+                                    onDismissRequest = { fontSizeMenuExpanded = false }
+                                ) {
+                                    fontSizeOptions.forEach { size ->
+                                        DropdownMenuItem(
+                                            text = { Text("$size sp") },
+                                            onClick = {
+                                                fontSize = size
+                                                onFontSizeChanged(size)
+                                                if (readerMode == ReaderMode.Scroll)
+                                                    pendingScrollOffset = lastReadingOffset
+                                                fontSizeMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Листание", color = Color.White, fontSize = controlsTextSize)
+                                Switch(
+                                    checked = readerMode == ReaderMode.Scroll,
+                                    onCheckedChange = { scroll ->
+                                        if (readerMode == ReaderMode.Pages)
+                                            lastReadingOffset = currentPageStartOffset
+                                        readerMode =
+                                            if (scroll) ReaderMode.Scroll else ReaderMode.Pages
+                                        if (scroll) pendingScrollOffset = lastReadingOffset
+                                    },
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+                                Text("Скролл", color = Color.White, fontSize = controlsTextSize)
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = {
+                                        if (isCurrentBookmarked)
+                                            bookmarks.remove(currentBookmarkOffset)
+                                        else {
+                                            bookmarks.add(currentBookmarkOffset)
+                                            bookmarks.sort()
+                                        }
+                                    },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isCurrentBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkAdd,
+                                        contentDescription = "Bookmark",
+                                        tint = Color.White
+                                    )
+                                }
+                                Text(
+                                    "Закладки",
+                                    color = Color.White,
+                                    fontSize = controlsTextSize,
+                                    modifier = Modifier
+                                        .padding(start = 4.dp)
+                                        .clickable { bookmarksMenuExpanded = true }
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Open bookmarks",
+                                    tint = Color.White,
+                                    modifier = Modifier.clickable { bookmarksMenuExpanded = true }
+                                )
+                                DropdownMenu(
+                                    expanded = bookmarksMenuExpanded,
+                                    onDismissRequest = { bookmarksMenuExpanded = false }
+                                ) {
+                                    if (bookmarks.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("Нет закладок") },
+                                            onClick = { bookmarksMenuExpanded = false },
+                                            enabled = false
+                                        )
+                                    } else {
+                                        bookmarks.sorted().forEach { offset ->
+                                            val start = offset.coerceIn(0, fullContent.length.coerceAtLeast(1) - 1)
+                                            val end = min(start + 40, fullContent.length)
+                                            val snippet = fullContent
+                                                .substring(start, end)
+                                                .replace('\n', ' ')
+                                                .trim()
+                                            val label = if (readerMode == ReaderMode.Pages)
+                                                "Страница ${pageIndexForOffset(offset) + 1}"
+                                            else {
+                                                val percent =
+                                                    if (fullContent.isEmpty()) 0 else offset * 100 / fullContent.length
+                                                "$percent%"
+                                            }
+                                            DropdownMenuItem(
+                                                text = { Text("$label — $snippet", fontSize = controlsTextSize) },
+                                                onClick = {
+                                                    lastReadingOffset = offset
+                                                    if (readerMode == ReaderMode.Pages)
+                                                        currentPage = pageIndexForOffset(offset)
+                                                    else pendingScrollOffset = offset
+                                                    bookmarksMenuExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (readerMode == ReaderMode.Pages) {
+                            IconButton(
+                                onClick = {
+                                    if (currentPage < totalPages - 1) goToPage(currentPage + 1)
+                                },
+                                enabled = currentPage < totalPages - 1,
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowForward,
+                                    contentDescription = "Следующая страница",
+                                    tint = if (currentPage < totalPages - 1) Color.White else Color.LightGray
+                                )
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.size(48.dp))
                         }
                     }
                 }
 
-                Text(
-                    text = if (readerMode == ReaderMode.Pages) {
-                        "${currentPage + 1} / $totalPages"
-                    } else {
-                        val percent =
-                            if (fullContent.isEmpty()) 0
-                            else lastReadingOffset * 100 / fullContent.length
-                        "$percent% · $lastReadingOffset / ${fullContent.length}"
-                    },
-                    fontSize = indicatorTextSize,
-                    color = Color.White
-                )
-            }
-
-            if (readerMode == ReaderMode.Pages) {
-                IconButton(
-                    onClick = {
-                        if (currentPage < totalPages - 1) {
-                            goToPage(currentPage + 1)
-                        }
-                    },
-                    enabled = currentPage < totalPages - 1,
-                    modifier = Modifier.size(48.dp)
+                // Page counter – always visible
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowForward,
-                        contentDescription = "Следующая страница",
-                        tint = if (currentPage < totalPages - 1) Color.White else Color.LightGray
+                    Text(
+                        text = if (readerMode == ReaderMode.Pages) {
+                            "${currentPage + 1} / $totalPages"
+                        } else {
+                            val percent = if (fullContent.isEmpty()) 0 else lastReadingOffset * 100 / fullContent.length
+                            "$percent% · $lastReadingOffset / ${fullContent.length}"
+                        },
+                        fontSize = indicatorTextSize,
+                        color = Color.White
                     )
                 }
-            } else {
-                Spacer(modifier = Modifier.size(48.dp))
             }
         }
     }
