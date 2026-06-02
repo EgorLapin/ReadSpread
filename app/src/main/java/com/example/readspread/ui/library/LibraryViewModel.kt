@@ -1,10 +1,16 @@
 package com.example.readspread.ui.library
 
+import android.app.Application
+import android.content.ContentResolver
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import data.local.domain.repository.BookRepository
 import data.local.entity.Book
+import data.local.entity.BookStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -12,6 +18,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 
 enum class BookFilter(val label: String) {
@@ -22,7 +32,8 @@ enum class BookFilter(val label: String) {
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val application: Application   // <-- добавлен Application
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -38,40 +49,31 @@ class LibraryViewModel @Inject constructor(
         .flatMapLatest { (query, filter) ->
             when (filter) {
                 BookFilter.ALL -> {
-                    if (query.isBlank()) {
-                        bookRepository.getAllBooks()
-                    } else {
-                        bookRepository.searchBooks(query)
-                    }
+                    if (query.isBlank()) bookRepository.getAllBooks()
+                    else bookRepository.searchBooks(query)
                 }
                 BookFilter.FAVORITES -> {
-                    // Для избранного поиск по названию/автору тоже можно реализовать
-                    // Пока упрощаем: если запрос пустой — все избранные, иначе ищем по избранным?
-                    // В репозитории есть searchBooks, он ищет по всем книгам, но нет метода searchFavoriteBooks.
-                    // Мы можем отфильтровать на уровне UI или добавить метод в репозиторий.
-                    // Для простоты: вернём все избранные, игнорируя запрос, или добавим в репозиторий метод.
-                    // Здесь используем getFavoriteBooks и потом фильтруем локально по запросу.
-                    // Чтобы не усложнять, сделаем фильтрацию локально.
                     bookRepository.getFavoriteBooks()
                         .flatMapLatest { favList ->
-                            val filtered = if (query.isBlank()) favList
-                            else favList.filter { book ->
-                                book.title.contains(query, ignoreCase = true) ||
-                                        book.author.contains(query, ignoreCase = true)
-                            }
-                            kotlinx.coroutines.flow.flowOf(filtered)
+                            kotlinx.coroutines.flow.flowOf(
+                                if (query.isBlank()) favList
+                                else favList.filter { book ->
+                                    book.title.contains(query, ignoreCase = true) ||
+                                            book.author.contains(query, ignoreCase = true)
+                                }
+                            )
                         }
                 }
                 BookFilter.READING -> {
-                    // Аналогично "Читаю сейчас"
                     bookRepository.getReadingBooks()
                         .flatMapLatest { readingList ->
-                            val filtered = if (query.isBlank()) readingList
-                            else readingList.filter { book ->
-                                book.title.contains(query, ignoreCase = true) ||
-                                        book.author.contains(query, ignoreCase = true)
-                            }
-                            kotlinx.coroutines.flow.flowOf(filtered)
+                            kotlinx.coroutines.flow.flowOf(
+                                if (query.isBlank()) readingList
+                                else readingList.filter { book ->
+                                    book.title.contains(query, ignoreCase = true) ||
+                                            book.author.contains(query, ignoreCase = true)
+                                }
+                            )
                         }
                 }
             }
@@ -88,5 +90,53 @@ class LibraryViewModel @Inject constructor(
 
     fun updateFilter(filter: BookFilter) {
         _selectedFilter.value = filter
+    }
+
+    /**
+     * Импорт книги из URI, полученного через SAF.
+     */
+    fun importBook(uri: Uri) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val contentResolver = application.contentResolver
+                val fileName = getFileName(contentResolver, uri) ?: "unknown_book"
+                val extension = fileName.substringAfterLast('.', "").lowercase()
+
+                // Копируем файл во внутреннее хранилище
+                val inputStream = contentResolver.openInputStream(uri) ?: return@withContext
+                val booksDir = File(application.filesDir, "books")
+                if (!booksDir.exists()) booksDir.mkdirs()
+                val destFile = File(booksDir, fileName)
+                FileOutputStream(destFile).use { output ->
+                    inputStream.copyTo(output)
+                }
+                inputStream.close()
+
+                val book = Book(
+                    title = fileName.substringBeforeLast('.'),
+                    author = "Неизвестный автор",
+                    filePath = destFile.absolutePath,
+                    format = extension.uppercase(),
+                    totalPages = 0,   // будет вычислено при открытии
+                    currentPage = 1,
+                    progress = 0f,
+                    status = BookStatus.NOT_STARTED,
+                    addedAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+                bookRepository.insertBook(book)
+            }
+        }
+    }
+
+    private fun getFileName(contentResolver: ContentResolver, uri: Uri): String? {
+        val cursor = contentResolver.query(uri, null, null, null, null)
+        cursor?.use {
+            if (it.moveToFirst()) {
+                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) return it.getString(nameIndex)
+            }
+        }
+        return uri.lastPathSegment
     }
 }
