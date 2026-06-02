@@ -6,8 +6,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
+import com.example.readspread.data.local.ThemeDataStore
 import com.example.readspread.navigation.AppNavGraph
 import com.example.readspread.ui.theme.ReadSpreadTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -15,6 +18,7 @@ import data.local.domain.repository.BookRepository
 import data.local.entity.Book
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.example.readspread.data.local.ThemeMode
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -22,14 +26,17 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var bookRepository: BookRepository
 
+    @Inject
+    lateinit var themeDataStore: ThemeDataStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Вставка тестовой книги, если база пуста
+        // Вставка тестовых книг, если база пуста
         lifecycleScope.launch {
             if (bookRepository.getBooksCount() == 0) {
-                // Книга 1: Война и мир (начало)
+                // Книга 1: Война и мир
                 bookRepository.insertBook(
                     Book(
                         title = "Война и мир",
@@ -40,11 +47,11 @@ class MainActivity : ComponentActivity() {
                         currentPage = 1,
                         description = "Роман-эпопея о русском обществе в эпоху наполеоновских войн.",
                         publishedDate = "1869",
-                        coverImageUrl = null // заглушка автоматически
+                        coverPath = null
                     )
                 )
 
-                // Книга 2: Преступление и наказание (начало)
+                // Книга 2: Преступление и наказание
                 bookRepository.insertBook(
                     Book(
                         title = "Преступление и наказание",
@@ -55,11 +62,11 @@ class MainActivity : ComponentActivity() {
                         currentPage = 1,
                         description = "История Родиона Раскольникова, студента, совершившего убийство.",
                         publishedDate = "1866",
-                        coverImageUrl = null
+                        coverPath = null
                     )
                 )
 
-                // Книга 3: 1984 (первые абзацы)
+                // Книга 3: 1984
                 bookRepository.insertBook(
                     Book(
                         title = "1984",
@@ -70,7 +77,7 @@ class MainActivity : ComponentActivity() {
                         currentPage = 1,
                         description = "Антиутопия о тоталитарном обществе и контроле над сознанием.",
                         publishedDate = "1949",
-                        coverImageUrl = null
+                        coverPath = null
                     )
                 )
 
@@ -81,10 +88,9 @@ class MainActivity : ComponentActivity() {
                         author = "Михаил Булгаков",
                         filePath = "test_master_and_margarita.txt",
                         format = "TXT",
-                        description = "Дьявол и его свита посещают Москву 1930-х годов.",
-                        coverImageUrl = null,
                         totalPages = 480,
                         currentPage = 1,
+                        description = "Дьявол и его свита посещают Москву 1930-х годов.",
                         publishedDate = "1967",
                         coverPath = null
                     )
@@ -108,10 +114,12 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            ReadSpreadTheme {
+            val themeMode by themeDataStore.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+
+            ReadSpreadTheme(themeMode = themeMode) {
                 Surface(color = MaterialTheme.colorScheme.background) {
                     val navController = rememberNavController()
-                    AppNavGraph(navController = navController)
+                    AppNavGraph(navController = navController, themeDataStore = themeDataStore)
                 }
             }
         }
