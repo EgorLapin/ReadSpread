@@ -468,7 +468,7 @@ fun BookContent(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = "Pages",
+                        text = "Листание",
                         color = Color.White,
                         fontSize = controlsTextSize
                     )
@@ -489,7 +489,7 @@ fun BookContent(
                     )
 
                     Text(
-                        text = "Scroll",
+                        text = "Скролл",
                         color = Color.White,
                         fontSize = controlsTextSize
                     )
