@@ -99,4 +99,5 @@ dependencies {
 
     // ❌ Все дубликаты с хардкод-версиями удалены!
     implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation(libs.androidx.datastore.preferences)
 }

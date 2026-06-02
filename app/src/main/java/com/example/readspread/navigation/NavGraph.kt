@@ -11,10 +11,12 @@ import androidx.navigation.navArgument
 import com.example.readspread.ui.details.BookDetailsScreen
 import com.example.readspread.ui.library.LibraryScreen
 import androidx.compose.foundation.clickable
+import com.example.readspread.data.local.ThemeDataStore
 @Composable
 fun AppNavGraph(
     navController: NavHostController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    themeDataStore: ThemeDataStore
 ) {
     NavHost(
         navController = navController,
@@ -27,7 +29,8 @@ fun AppNavGraph(
                 onBookClick = { book ->
                     // Переход на экран деталей книги
                     navController.navigate(AppDestinations.bookDetailsRoute(book.id))
-                }
+                },
+                themeDataStore = themeDataStore
             )
         }
 
