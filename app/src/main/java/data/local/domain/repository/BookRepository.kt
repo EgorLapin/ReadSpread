@@ -96,6 +96,14 @@ class BookRepository(
         bookDao.updateFavorite(bookId, isFavorite, System.currentTimeMillis())
     }
 
+    suspend fun toggleFavorite(bookId: Long) = withContext(Dispatchers.IO) {
+        val book = bookDao.getBookByIdSync(bookId)
+        book?.let {
+            val newFavoriteState = !it.isFavorite
+            bookDao.updateFavorite(bookId, newFavoriteState, System.currentTimeMillis())
+        }
+    }
+
     // Статистика
     suspend fun getBooksCount(): Int = withContext(Dispatchers.IO) {
         bookDao.getBooksCount()
