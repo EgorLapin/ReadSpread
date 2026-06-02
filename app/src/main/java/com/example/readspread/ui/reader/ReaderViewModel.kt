@@ -84,6 +84,8 @@ class ReaderViewModel @Inject constructor(
             val bookId = bookIdFlow.value
             if (bookId > 0) {
                 readingProgressRepository.updateFontSize(bookId, fontSize)
+                // Also update the Book entity so fontSize is available on next launch
+                repository.updateFontSize(bookId, fontSize)
             }
         }
     }

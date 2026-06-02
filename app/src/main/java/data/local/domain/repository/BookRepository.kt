@@ -61,7 +61,9 @@ class BookRepository(
     suspend fun deleteBookById(bookId: Long) = withContext(Dispatchers.IO) {
         bookDao.deleteBookById(bookId)
     }
-
+    suspend fun updateFontSize(bookId: Long, fontSize: Int) = withContext(Dispatchers.IO) {
+        bookDao.updateFontSize(bookId, fontSize)
+    }
     // Обновление прогресса
     suspend fun updateProgress(
         bookId: Long,

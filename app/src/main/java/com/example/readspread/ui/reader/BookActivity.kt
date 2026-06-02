@@ -107,11 +107,14 @@ fun BookContent(
     data class TextChunk(val start: Int, val text: String)
 
     val lightBlue = Color(0xffEAAAFF)
-    var fontSize by rememberSaveable { mutableIntStateOf(20) }
+    var fontSize by rememberSaveable { mutableIntStateOf(book.fontSize.takeIf { it > 0 } ?: 20) }
     var readerMode by rememberSaveable { mutableStateOf(ReaderMode.Pages) }
     var selectedFont by remember { mutableStateOf(FontFamily.Default) }
     var fontSizeMenuExpanded by remember { mutableStateOf(false) }
     var bookmarksMenuExpanded by remember { mutableStateOf(false) }
+
+    // Flag to track if initial restoration has been done
+    var isRestored by rememberSaveable { mutableStateOf(false) }
 
     val fontSizeOptions = listOf(12, 14, 16, 18, 20, 22, 24, 28, 32)
 
@@ -229,14 +232,16 @@ fun BookContent(
             .coerceAtMost(totalPages - 1)
     }
 
-    // Restore the reading position from the saved book page (once)
+    // Restore reading position only once when pages become available
     LaunchedEffect(pages) {
-        if (pages.isNotEmpty() && lastReadingOffset == 0) {
-            val savedPage = book.currentPage.coerceIn(1, totalPages)  // 1‑based
+        if (!isRestored && pages.isNotEmpty()) {
+            // Restore reading position
+            val savedPage = book.currentPage.coerceIn(1, totalPages)
             val savedOffset = pageOffsets.getOrElse(savedPage - 1) { 0 }
             if (savedOffset > 0) {
                 lastReadingOffset = savedOffset
             }
+            isRestored = true
         }
     }
 
