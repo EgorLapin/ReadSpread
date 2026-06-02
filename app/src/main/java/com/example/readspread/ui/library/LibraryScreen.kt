@@ -1,9 +1,10 @@
 package com.example.readspread.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
+//import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -16,12 +17,22 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.readspread.ui.components.BookCard
 import data.local.entity.Book
-
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DarkMode
+import com.example.readspread.data.local.ThemeDataStore
+import com.example.readspread.data.local.ThemeMode
+import androidx.compose.material3.RadioButton
+import androidx.compose.runtime.collectAsState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onBookClick: (Book) -> Unit,
-    viewModel: LibraryViewModel = hiltViewModel()
+    viewModel: LibraryViewModel = hiltViewModel(),
+    themeDataStore: ThemeDataStore
 ) {
     val books by viewModel.books.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -46,6 +57,10 @@ fun LibraryScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Моя библиотека") },
+                actions = {
+                    val currentTheme by themeDataStore.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+                    ThemeSwitchButton(themeDataStore = themeDataStore, currentTheme = currentTheme)
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -152,6 +167,81 @@ private fun EmptyLibrary() {
             text = "Попробуйте изменить запрос или фильтр",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+@Composable
+fun ThemeSwitchButton(
+    themeDataStore: ThemeDataStore,
+    currentTheme: ThemeMode      // <-- новый параметр
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    // Определяем, какой пункт считать выбранным (SYSTEM => LIGHT)
+    val selectedMode = if (currentTheme == ThemeMode.SYSTEM) ThemeMode.LIGHT else currentTheme
+
+    IconButton(onClick = { showDialog = true }) {
+        Icon(Icons.Default.DarkMode, contentDescription = "Выбор темы")
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Тема оформления") },
+            text = {
+                Column {
+                    // Светлая
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = selectedMode == ThemeMode.LIGHT,
+                            onClick = {
+                                scope.launch { themeDataStore.setThemeMode(ThemeMode.LIGHT) }
+                                showDialog = false
+                            }
+                        )
+                        Text("Светлая", modifier = Modifier.clickable {
+                            scope.launch { themeDataStore.setThemeMode(ThemeMode.LIGHT) }
+                            showDialog = false
+                        })
+                    }
+
+                    // Тёмная
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = selectedMode == ThemeMode.DARK,
+                            onClick = {
+                                scope.launch { themeDataStore.setThemeMode(ThemeMode.DARK) }
+                                showDialog = false
+                            }
+                        )
+                        Text("Тёмная", modifier = Modifier.clickable {
+                            scope.launch { themeDataStore.setThemeMode(ThemeMode.DARK) }
+                            showDialog = false
+                        })
+                    }
+
+                    // Сепия
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = selectedMode == ThemeMode.SEPIA,
+                            onClick = {
+                                scope.launch { themeDataStore.setThemeMode(ThemeMode.SEPIA) }
+                                showDialog = false
+                            }
+                        )
+                        Text("Сепия", modifier = Modifier.clickable {
+                            scope.launch { themeDataStore.setThemeMode(ThemeMode.SEPIA) }
+                            showDialog = false
+                        })
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text("Отмена")
+                }
+            }
         )
     }
 }

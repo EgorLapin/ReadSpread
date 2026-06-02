@@ -1,29 +1,19 @@
 package com.example.readspread.ui.theme
 
-// ✅ Добавь эти импорты в начало файла Theme.kt:
-import com.example.readspread.ui.theme.Purple80
-import com.example.readspread.ui.theme.PurpleGrey80
-import com.example.readspread.ui.theme.Pink80
-import com.example.readspread.ui.theme.Purple40
-import com.example.readspread.ui.theme.PurpleGrey40
-import com.example.readspread.ui.theme.Pink40
-
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.Typography  // ✅ ЭТОТ ИМПОРТ КРИТИЧЕН!
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import com.example.readspread.data.local.ThemeMode
 
+// === Цветовые схемы ===
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
     secondary = PurpleGrey80,
@@ -36,15 +26,44 @@ private val LightColorScheme = lightColorScheme(
     tertiary = Pink40
 )
 
+private val SepiaColorScheme = lightColorScheme(
+    primary = SepiaPrimary,
+    onPrimary = SepiaOnPrimary,
+    primaryContainer = SepiaPrimaryContainer,
+    onPrimaryContainer = SepiaOnPrimaryContainer,
+    secondary = SepiaSecondary,
+    onSecondary = SepiaOnSecondary,
+    secondaryContainer = SepiaSecondaryContainer,
+    onSecondaryContainer = SepiaOnSecondaryContainer,
+    tertiary = SepiaTertiary,
+    onTertiary = SepiaOnTertiary,
+    background = SepiaBackground,
+    onBackground = SepiaOnBackground,
+    surface = SepiaSurface,
+    onSurface = SepiaOnSurface,
+    surfaceVariant = SepiaSurfaceVariant,
+    onSurfaceVariant = SepiaOnSurfaceVariant,
+    error = SepiaError,
+    onError = SepiaOnError,
+    outline = SepiaOutline
+)
+
 @Composable
 fun ReadSpreadTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    val darkTheme = when (themeMode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SEPIA -> false
+    }
+
+    val colorScheme = when (themeMode) {
+        ThemeMode.DARK -> DarkColorScheme
+        ThemeMode.SEPIA -> SepiaColorScheme
+        else -> if (darkTheme) DarkColorScheme else LightColorScheme
     }
 
     val view = LocalView.current
