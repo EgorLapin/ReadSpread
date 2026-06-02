@@ -79,6 +79,9 @@ class BookActivity : ComponentActivity() {
                         onFontSizeChanged = { newSize ->
                             viewModel.updateFontSize(newSize)
                         },
+                        onTotalPagesCalculated = { totalPages ->
+                            viewModel.updateTotalPages(totalPages)
+                        },
                         onAddBookmark = { offset, pageNumber, textPreview ->
                             viewModel.addBookmark(offset, pageNumber, textPreview)
                         },
@@ -101,6 +104,7 @@ fun BookContent(
     bookmarks: List<Bookmark>,
     onPageChanged: (page: Int, totalPages: Int) -> Unit,
     onFontSizeChanged: (fontSize: Int) -> Unit,
+    onTotalPagesCalculated: (totalPages: Int) -> Unit,
     onAddBookmark: (offset: Int, pageNumber: Int, textPreview: String) -> Unit,
     onDeleteBookmark: (bookmarkId: Long) -> Unit
 ) {
@@ -223,6 +227,13 @@ fun BookContent(
     }
 
     val totalPages = pages.size.coerceAtLeast(1)
+
+    // Save total pages to database when they change
+    LaunchedEffect(totalPages) {
+        if (totalPages > 0) {
+            onTotalPagesCalculated(totalPages)
+        }
+    }
 
     fun pageIndexForOffset(offset: Int): Int {
         if (pageOffsets.isEmpty()) return 0

@@ -108,7 +108,14 @@ class ReaderViewModel @Inject constructor(
             bookmarkRepository.deleteBookmarkById(bookmarkId)
         }
     }
-
+    fun updateTotalPages(totalPages: Int) {
+        viewModelScope.launch {
+            val bookId = bookIdFlow.value
+            if (bookId > 0) {
+                repository.updateTotalPages(bookId, totalPages)
+            }
+        }
+    }
     // --- Content loading methods (unchanged) ---
     private suspend fun loadBookContent(book: Book): String = withContext(Dispatchers.IO) {
         if (book.filePath.startsWith("test_")) {
@@ -276,4 +283,6 @@ class ReaderViewModel @Inject constructor(
         }
         return null
     }
+
+
 }

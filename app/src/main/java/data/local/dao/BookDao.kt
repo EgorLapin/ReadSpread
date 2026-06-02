@@ -63,4 +63,7 @@ interface BookDao {
 
     @Query("SELECT SUM(fileSize) FROM books")
     suspend fun getTotalFilesSize(): Long?
+
+    @Query("UPDATE books SET totalPages = :totalPages, updatedAt = :updatedAt WHERE id = :bookId")
+    suspend fun updateTotalPages(bookId: Long, totalPages: Int, updatedAt: Long)
 }
