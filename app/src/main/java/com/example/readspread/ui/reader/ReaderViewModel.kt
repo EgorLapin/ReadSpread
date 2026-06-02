@@ -7,17 +7,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import data.local.domain.repository.BookRepository
+import data.local.domain.repository.BookmarkRepository
+import data.local.domain.repository.ReadingProgressRepository
 import data.local.entity.Book
 import data.local.entity.BookFormat
-import data.local.entity.BookStatus
+import data.local.entity.Bookmark
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
@@ -29,6 +26,8 @@ import kotlin.text.RegexOption
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val repository: BookRepository,
+    private val bookmarkRepository: BookmarkRepository,
+    private val readingProgressRepository: ReadingProgressRepository,
     private val application: Application
 ) : ViewModel() {
 
@@ -41,9 +40,7 @@ class ReaderViewModel @Inject constructor(
     private val bookIdFlow = MutableStateFlow(0L)
 
     val uiState: StateFlow<UiState> = bookIdFlow
-        .flatMapLatest { id ->
-            repository.getBookById(id)
-        }
+        .flatMapLatest { id -> repository.getBookById(id) }
         .map { book ->
             if (book != null) {
                 val content = loadBookContent(book)
@@ -58,19 +55,66 @@ class ReaderViewModel @Inject constructor(
             initialValue = UiState.Loading
         )
 
+    val bookmarks: StateFlow<List<Bookmark>> = bookIdFlow
+        .flatMapLatest { id -> bookmarkRepository.getBookmarksForBook(id) }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     fun setBookId(id: Long) {
         bookIdFlow.value = id
     }
 
+    fun updatePageAndProgress(page: Int, totalPages: Int) {
+        viewModelScope.launch {
+            val bookId = bookIdFlow.value
+            if (bookId > 0) {
+                // Update the ReadingProgress table
+                readingProgressRepository.updatePageAndProgress(bookId, page, totalPages)
+                // Also update the Book entity so currentPage is available on next launch
+                repository.updatePageAndProgress(bookId, page, totalPages)
+            }
+        }
+    }
+
+    fun updateFontSize(fontSize: Int) {
+        viewModelScope.launch {
+            val bookId = bookIdFlow.value
+            if (bookId > 0) {
+                readingProgressRepository.updateFontSize(bookId, fontSize)
+            }
+        }
+    }
+
+    fun addBookmark(offset: Int, pageNumber: Int, textPreview: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bookId = bookIdFlow.value
+            val bookmark = Bookmark(
+                bookId = bookId,
+                pageNumber = pageNumber,
+                position = offset.toString(),
+                textPreview = textPreview
+            )
+            bookmarkRepository.addBookmark(bookmark)
+        }
+    }
+
+    fun deleteBookmark(bookmarkId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            bookmarkRepository.deleteBookmarkById(bookmarkId)
+        }
+    }
+
+    // --- Content loading methods (unchanged) ---
     private suspend fun loadBookContent(book: Book): String = withContext(Dispatchers.IO) {
         if (book.filePath.startsWith("test_")) {
             return@withContext getTestBookContent(book.title)
         }
-
         try {
             val file = File(book.filePath)
             if (!file.exists()) return@withContext "Error: File not found at ${book.filePath}"
-
             when (book.format.uppercase()) {
                 BookFormat.EPUB -> readEpubText(file)
                 BookFormat.TXT -> file.readText()
@@ -94,7 +138,6 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun readEpubText(file: File): String {
-        // … (identical to your current version, no change needed)
         return try {
             ZipFile(file).use { zip ->
                 val rootfilePath = getRootfilePath(zip)
@@ -116,7 +159,7 @@ class ReaderViewModel @Inject constructor(
                     val entry = zip.getEntry(path)
                     if (entry != null) {
                         val html = String(zip.getInputStream(entry).readBytes(), Charsets.UTF_8)
-                        val plainText = htmlToPlainText(html)   // <-- improved method
+                        val plainText = htmlToPlainText(html)
                         if (plainText.isNotBlank()) {
                             textBuilder.append(plainText.trim())
                             textBuilder.append("\n\n")
@@ -133,42 +176,36 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    // ---------- IMPROVED HTML TO PLAIN TEXT ----------
     private fun htmlToPlainText(html: String): String {
         return html
-            // Replace block elements with a single newline
             .replace(Regex("</?p[^>]*>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("<br[^>]*>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("</?div[^>]*>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("</?h[1-6][^>]*>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("</?li[^>]*>", RegexOption.IGNORE_CASE), "\n")
-            // Remove head, scripts, styles
             .replace(Regex("<head[^>]*>.*?</head>", RegexOption.DOT_MATCHES_ALL), "")
             .replace(Regex("<script[^>]*>.*?</script>", RegexOption.DOT_MATCHES_ALL), "")
             .replace(Regex("<style[^>]*>.*?</style>", RegexOption.DOT_MATCHES_ALL), "")
-            // Strip all remaining tags (including <img>, <figure>, etc.)
             .replace(Regex("<[^>]+>"), " ")
-            // Decode entities
             .replace("&nbsp;", " ")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
             .replace("&apos;", "'")
-            // Collapse whitespace – keep only single newlines, no blank lines
             .replace(Regex("[ \t]+"), " ")
             .replace(Regex("\n{2,}"), "\n")
             .trim()
     }
 
-    // --- Everything else unchanged (getRootfilePath, parseManifest, etc.) ---
-    private fun getRootfilePath(zip: ZipFile): String? { /* ... same ... */
+    // --- XML parsing helpers (unchanged) ---
+    private fun getRootfilePath(zip: ZipFile): String? {
         val entry = zip.getEntry("META-INF/container.xml") ?: return null
         val xml = String(zip.getInputStream(entry).readBytes())
         return parseXmlForAttribute(xml, "rootfile", "full-path")
     }
 
-    private fun parseManifest(opfXml: String): Map<String, String> { /* ... same ... */
+    private fun parseManifest(opfXml: String): Map<String, String> {
         val map = mutableMapOf<String, String>()
         var inManifest = false
         val parser = Xml.newPullParser()
@@ -193,7 +230,7 @@ class ReaderViewModel @Inject constructor(
         return map
     }
 
-    private fun parseSpineOrder(opfXml: String): List<String> { /* ... same ... */
+    private fun parseSpineOrder(opfXml: String): List<String> {
         val ids = mutableListOf<String>()
         var inSpine = false
         val parser = Xml.newPullParser()
@@ -225,7 +262,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun parseXmlForAttribute(xml: String, tag: String, attribute: String): String? { /* ... same ... */
+    private fun parseXmlForAttribute(xml: String, tag: String, attribute: String): String? {
         val parser = Xml.newPullParser()
         parser.setInput(StringReader(xml))
         var eventType = parser.eventType
@@ -236,23 +273,5 @@ class ReaderViewModel @Inject constructor(
             eventType = parser.next()
         }
         return null
-    }
-
-    // ---------- STUB ----------
-    private fun createStubBook(id: Long): Book {
-        val testEpubPath = File(application.getExternalFilesDir(null), "test.epub").absolutePath
-        return Book(
-            id = id.takeIf { it > 0 } ?: 1L,
-            title = "Test EPUB Book",
-            author = "Unknown",
-            filePath = testEpubPath,
-            format = BookFormat.EPUB,
-            totalPages = 0,
-            currentPage = 1,
-            progress = 0f,
-            status = "NOT_STARTED",
-            addedAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
-        )
     }
 }
