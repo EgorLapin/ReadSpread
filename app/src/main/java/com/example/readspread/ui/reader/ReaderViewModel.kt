@@ -24,6 +24,7 @@ import java.io.File
 import java.io.StringReader
 import java.util.zip.ZipFile
 import javax.inject.Inject
+import kotlin.text.RegexOption
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -41,11 +42,15 @@ class ReaderViewModel @Inject constructor(
 
     val uiState: StateFlow<UiState> = bookIdFlow
         .flatMapLatest { id ->
-            flowOf(createStubBook(id))   // stub for testing
+            repository.getBookById(id)
         }
         .map { book ->
-            val content = loadBookContent(book)
-            UiState.Success(book, content)
+            if (book != null) {
+                val content = loadBookContent(book)
+                UiState.Success(book, content)
+            } else {
+                UiState.Error("Книга не найдена")
+            }
         }
         .stateIn(
             scope = viewModelScope,
@@ -58,6 +63,10 @@ class ReaderViewModel @Inject constructor(
     }
 
     private suspend fun loadBookContent(book: Book): String = withContext(Dispatchers.IO) {
+        if (book.filePath.startsWith("test_")) {
+            return@withContext getTestBookContent(book.title)
+        }
+
         try {
             val file = File(book.filePath)
             if (!file.exists()) return@withContext "Error: File not found at ${book.filePath}"
@@ -70,6 +79,17 @@ class ReaderViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.e("READER_VM", "Error loading book content", e)
             "Error loading content: ${e.localizedMessage}"
+        }
+    }
+
+    private fun getTestBookContent(title: String): String {
+        return when (title) {
+            "Война и мир" -> "Глава 1\n\nВ 1805 году, в самый разгар наполеоновских войн, в Петербурге..."
+            "Преступление и наказание" -> "В начале июля, в чрезвычайно жаркое время, под вечер..."
+            "1984" -> "Был холодный ясный апрельский день, и часы пробили тринадцать..."
+            "Мастер и Маргарита" -> "Однажды весною, в час небывало жаркого заката, в Москве..."
+            "Гарри Поттер и философский камень" -> "Мистер и миссис Дурсль, проживавшие в доме номер четыре..."
+            else -> "Текст книги временно недоступен для предпросмотра."
         }
     }
 

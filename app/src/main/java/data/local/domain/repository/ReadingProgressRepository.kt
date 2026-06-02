@@ -23,4 +23,13 @@ class ReadingProgressRepository(private val progressDao: ReadingProgressDao) {
     suspend fun updateProgress(progress: ReadingProgress) = withContext(Dispatchers.IO) {
         progressDao.updateProgress(progress)
     }
+
+    suspend fun updateFontSize(bookId: Long, fontSize: Int) {
+        progressDao.updateFontSize(bookId, fontSize)
+    }
+
+    suspend fun updatePageAndProgress(bookId: Long, userId: Long, currentPage: Int, totalPages: Int) {
+        val progress = (currentPage.toFloat() / totalPages) * 100f
+        progressDao.updatePageAndProgress(bookId, currentPage, progress)
+    }
 }
