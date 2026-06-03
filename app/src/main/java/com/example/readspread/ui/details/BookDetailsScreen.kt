@@ -3,12 +3,14 @@ package com.example.readspread.ui.details
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
@@ -28,8 +30,10 @@ import com.example.readspread.ui.components.BookCoverPlaceholder
 import data.local.entity.Book
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import android.content.Context
+import java.io.File
+import java.io.FileOutputStream
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookDetailsScreen(
@@ -68,7 +72,8 @@ fun BookDetailsScreen(
                         },
                         onToggleFavorite = viewModel::toggleFavorite,
                         onDelete = { viewModel.deleteBook { onBackClick() } },
-                        onCoverChange = { newPath -> viewModel.updateCoverPath(newPath) }
+                        onCoverChange = { newPath -> viewModel.updateCoverPath(newPath) },
+                        onEditTitle = { newTitle -> viewModel.updateCustomTitle(newTitle) }
                     )
                 }
             }
@@ -82,7 +87,8 @@ fun BookDetailsContent(
     onStartReading: () -> Unit,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
-    onCoverChange: (String) -> Unit
+    onCoverChange: (String) -> Unit,
+    onEditTitle: (String) -> Unit
 ) {
     val context = LocalContext.current
 
@@ -95,12 +101,16 @@ fun BookDetailsContent(
         }
     }
 
+    var editTitleDialog by remember { mutableStateOf(false) }
+    var editedTitle by remember { mutableStateOf(book.customTitle ?: book.title) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
+        // Обложка
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -121,7 +131,7 @@ fun BookDetailsContent(
                 )
             } else {
                 BookCoverPlaceholder(
-                    title = book.title,
+                    title = book.customTitle ?: book.title,
                     author = book.author,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -130,7 +140,22 @@ fun BookDetailsContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(text = book.title, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        // Название с кнопкой редактирования
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = book.customTitle ?: book.title,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = {
+                editedTitle = book.customTitle ?: book.title
+                editTitleDialog = true
+            }) {
+                Icon(Icons.Default.Edit, contentDescription = "Редактировать название")
+            }
+        }
+
         Text(
             text = book.author,
             fontSize = 18.sp,
@@ -180,6 +205,31 @@ fun BookDetailsContent(
             }
         }
     }
+
+    // Диалог редактирования названия
+    if (editTitleDialog) {
+        AlertDialog(
+            onDismissRequest = { editTitleDialog = false },
+            title = { Text("Название книги") },
+            text = {
+                OutlinedTextField(
+                    value = editedTitle,
+                    onValueChange = { editedTitle = it },
+                    label = { Text("Введите название") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onEditTitle(editedTitle)
+                    editTitleDialog = false
+                }) { Text("Сохранить") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editTitleDialog = false }) { Text("Отмена") }
+            }
+        )
+    }
 }
 
 @Composable
@@ -195,11 +245,11 @@ private fun InfoRow(label: String, value: String) {
 
 fun saveCoverToInternalStorage(context: Context, sourceUri: Uri, bookId: Long): String? {
     return try {
-        val coverDir = java.io.File(context.filesDir, "covers")
+        val coverDir = File(context.filesDir, "covers")
         if (!coverDir.exists()) coverDir.mkdirs()
-        val coverFile = java.io.File(coverDir, "cover_${bookId}_${System.currentTimeMillis()}.jpg")
+        val coverFile = File(coverDir, "cover_${bookId}_${System.currentTimeMillis()}.jpg")
         context.contentResolver.openInputStream(sourceUri)?.use { input ->
-            java.io.FileOutputStream(coverFile).use { output ->
+            FileOutputStream(coverFile).use { output ->
                 input.copyTo(output)
             }
         }

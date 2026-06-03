@@ -59,7 +59,8 @@ class LibraryViewModel @Inject constructor(
                                 if (query.isBlank()) favList
                                 else favList.filter { book ->
                                     book.title.contains(query, ignoreCase = true) ||
-                                            book.author.contains(query, ignoreCase = true)
+                                            book.author.contains(query, ignoreCase = true) ||
+                                            (book.customTitle?.contains(query, ignoreCase = true) == true)
                                 }
                             )
                         }
@@ -71,7 +72,8 @@ class LibraryViewModel @Inject constructor(
                                 if (query.isBlank()) readingList
                                 else readingList.filter { book ->
                                     book.title.contains(query, ignoreCase = true) ||
-                                            book.author.contains(query, ignoreCase = true)
+                                            book.author.contains(query, ignoreCase = true) ||
+                                            (book.customTitle?.contains(query, ignoreCase = true) == true)
                                 }
                             )
                         }

@@ -22,7 +22,7 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE isFavorite = 1 ORDER BY title ASC")
     fun getFavoriteBooks(): Flow<List<Book>>
 
-    @Query("SELECT * FROM books WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM books WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%' OR customTitle LIKE '%' || :query || '%'")
     fun searchBooks(query: String): Flow<List<Book>>
 
     @Query("SELECT * FROM books WHERE fileHash = :hash")
