@@ -11,14 +11,15 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.example.readspread.data.local.ThemeDataStore
+import com.example.readspread.data.local.ThemeMode
 import com.example.readspread.navigation.AppNavGraph
 import com.example.readspread.ui.theme.ReadSpreadTheme
 import dagger.hilt.android.AndroidEntryPoint
 import data.local.domain.repository.BookRepository
 import data.local.entity.Book
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import com.example.readspread.data.local.ThemeMode
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -33,9 +34,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Вставка тестовых книг, если база пуста
+        // Добавляем тестовые книги, только если нет реальных
         lifecycleScope.launch {
-            if (bookRepository.getBooksCount() == 0) {
+            val books = bookRepository.getAllBooks().first()
+            val hasRealBooks = books.any { !it.filePath.startsWith("test_") }
+
+            if (!hasRealBooks) {
                 // Книга 1: Война и мир
                 bookRepository.insertBook(
                     Book(

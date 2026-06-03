@@ -34,6 +34,8 @@ interface BookDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBooks(books: List<Book>)
 
+    @Query("DELETE FROM books WHERE filePath LIKE :prefix || '%'")
+    suspend fun deleteBooksByFilePathPrefix(prefix: String)
     @Update
     suspend fun updateBook(book: Book)
 

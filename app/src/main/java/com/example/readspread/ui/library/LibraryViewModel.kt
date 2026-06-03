@@ -127,6 +127,7 @@ class LibraryViewModel @Inject constructor(
                     updatedAt = System.currentTimeMillis()
                 )
                 bookRepository.insertBook(book)
+                bookRepository.deleteTestBooks()
             }
         }
     }

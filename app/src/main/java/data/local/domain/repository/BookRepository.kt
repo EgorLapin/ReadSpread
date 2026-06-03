@@ -102,6 +102,10 @@ class BookRepository(
         bookDao.updateFavorite(bookId, isFavorite, System.currentTimeMillis())
     }
 
+    suspend fun deleteTestBooks() = withContext(Dispatchers.IO) {
+        bookDao.deleteBooksByFilePathPrefix("test_")
+    }
+
     suspend fun toggleFavorite(bookId: Long) = withContext(Dispatchers.IO) {
         val book = bookDao.getBookByIdSync(bookId)
         book?.let {
