@@ -22,8 +22,7 @@ import java.io.StringReader
 import java.util.zip.ZipFile
 import javax.inject.Inject
 import kotlin.text.RegexOption
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.nio.charset.Charset
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -73,9 +72,7 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             val bookId = bookIdFlow.value
             if (bookId > 0) {
-                // Update the ReadingProgress table
                 readingProgressRepository.updatePageAndProgress(bookId, page, totalPages)
-                // Also update the Book entity so currentPage is available on next launch
                 repository.updatePageAndProgress(bookId, page, totalPages)
             }
         }
@@ -86,7 +83,6 @@ class ReaderViewModel @Inject constructor(
             val bookId = bookIdFlow.value
             if (bookId > 0) {
                 readingProgressRepository.updateFontSize(bookId, fontSize)
-                // Also update the Book entity so fontSize is available on next launch
                 repository.updateFontSize(bookId, fontSize)
             }
         }
@@ -110,6 +106,7 @@ class ReaderViewModel @Inject constructor(
             bookmarkRepository.deleteBookmarkById(bookmarkId)
         }
     }
+
     fun updateTotalPages(totalPages: Int) {
         viewModelScope.launch {
             val bookId = bookIdFlow.value
@@ -118,7 +115,8 @@ class ReaderViewModel @Inject constructor(
             }
         }
     }
-    // --- Content loading methods (unchanged) ---
+
+    // --- Загрузка контента книги ---
     private suspend fun loadBookContent(book: Book): String = withContext(Dispatchers.IO) {
         if (book.filePath.startsWith("test_")) {
             return@withContext getTestBookContent(book.title)
@@ -128,8 +126,8 @@ class ReaderViewModel @Inject constructor(
             if (!file.exists()) return@withContext "Error: File not found at ${book.filePath}"
             when (book.format.uppercase()) {
                 BookFormat.EPUB -> readEpubText(file)
-                BookFormat.TXT -> file.readText()
-                BookFormat.FB2 -> readFb2Text(file)
+                BookFormat.TXT -> readTxtFile(file)
+                BookFormat.FB2 -> readFb2File(file)
                 else -> "Unsupported format: ${book.format}"
             }
         } catch (e: Exception) {
@@ -138,6 +136,7 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    // --- Тестовые книги-заглушки ---
     private fun getTestBookContent(title: String): String {
         return when (title) {
             "Война и мир" -> "Глава 1\n\nВ 1805 году, в самый разгар наполеоновских войн, в Петербурге..."
@@ -149,44 +148,94 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    private fun readFb2Text(file: File): String {
+    // --- Чтение TXT с автоопределением кодировки ---
+    private fun readTxtFile(file: File): String {
+        val bytes = file.readBytes()   // <-- вынесли сюда
         return try {
-            file.inputStream().bufferedReader(Charsets.UTF_8).use { reader ->
-                val textBuilder = StringBuilder()
-                val parser = Xml.newPullParser()
-                parser.setInput(reader)
-                var eventType = parser.eventType
-                var insideBody = false
-                var insideParagraph = false
-                while (eventType != XmlPullParser.END_DOCUMENT) {
-                    when (eventType) {
-                        XmlPullParser.START_TAG -> {
-                            if (parser.name == "body") insideBody = true
-                            if (insideBody && parser.name == "p") insideParagraph = true
-                        }
-                        XmlPullParser.TEXT -> {
-                            if (insideParagraph) {
-                                textBuilder.append(parser.text.trim())
-                                textBuilder.append(" ")
-                            }
-                        }
-                        XmlPullParser.END_TAG -> {
-                            if (parser.name == "body") insideBody = false
-                            if (parser.name == "p") {
-                                insideParagraph = false
-                                textBuilder.append("\n\n")
-                            }
-                        }
-                    }
-                    eventType = parser.next()
-                }
-                textBuilder.toString().ifEmpty { "No readable text found in FB2 file." }
+            // пробуем UTF-8
+            val utf8String = String(bytes, Charsets.UTF_8)
+            // если много символов замены, переходим на windows-1251
+            if (utf8String.count { it == '\uFFFD' } > utf8String.length * 0.1) {
+                return String(bytes, Charset.forName("windows-1251"))
+            }
+            utf8String
+        } catch (e: Exception) {
+            // если совсем ошибка, fallback
+            String(bytes, Charset.forName("windows-1251"))
+        }
+    }
+
+    // --- Чтение FB2 ---
+    private fun readFb2File(file: File): String {
+        return try {
+            val bytes = file.readBytes()
+            val encoding = detectFb2Encoding(bytes)
+            val content = String(bytes, Charset.forName(encoding))
+            if (content.startsWith("<?xml")) {
+                parseFb2Content(content)
+            } else {
+                // не XML – покажем как есть
+                content
             }
         } catch (e: Exception) {
             Log.e("READER_VM", "FB2 parsing error", e)
             "Error reading FB2: ${e.message}"
         }
     }
+
+    /**
+     * Определяет кодировку из XML-декларации FB2-файла.
+     * Просматривает первые 200 байт как ISO-8859-1 и ищет атрибут encoding.
+     */
+    private fun detectFb2Encoding(bytes: ByteArray): String {
+        try {
+            val headerSize = minOf(200, bytes.size)
+            val headerBytes = bytes.copyOf(headerSize)
+            val header = String(headerBytes, Charsets.ISO_8859_1)
+            val regex = Regex("""encoding\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            val match = regex.find(header)
+            return match?.groupValues?.get(1)?.trim() ?: "UTF-8"
+        } catch (e: Exception) {
+            return "UTF-8"
+        }
+    }
+
+    /**
+     * Парсит содержимое FB2 (XML) и извлекает текст из параграфов внутри body.
+     */
+    private fun parseFb2Content(content: String): String {
+        val parser = Xml.newPullParser()
+        parser.setInput(StringReader(content))
+        val textBuilder = StringBuilder()
+        var eventType = parser.eventType
+        var insideBody = false
+        var insideParagraph = false
+        while (eventType != XmlPullParser.END_DOCUMENT) {
+            when (eventType) {
+                XmlPullParser.START_TAG -> {
+                    if (parser.name == "body") insideBody = true
+                    if (insideBody && parser.name == "p") insideParagraph = true
+                }
+                XmlPullParser.TEXT -> {
+                    if (insideParagraph) {
+                        textBuilder.append(parser.text.trim())
+                        textBuilder.append(" ")
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    if (parser.name == "body") insideBody = false
+                    if (parser.name == "p") {
+                        insideParagraph = false
+                        textBuilder.append("\n\n")
+                    }
+                }
+            }
+            eventType = parser.next()
+        }
+        return textBuilder.toString().ifEmpty { "No readable text found in FB2 file." }
+    }
+
+    // --- EPUB ---
     private fun readEpubText(file: File): String {
         return try {
             ZipFile(file).use { zip ->
@@ -248,7 +297,7 @@ class ReaderViewModel @Inject constructor(
             .trim()
     }
 
-    // --- XML parsing helpers (unchanged) ---
+    // --- XML helpers ---
     private fun getRootfilePath(zip: ZipFile): String? {
         val entry = zip.getEntry("META-INF/container.xml") ?: return null
         val xml = String(zip.getInputStream(entry).readBytes())
@@ -324,6 +373,4 @@ class ReaderViewModel @Inject constructor(
         }
         return null
     }
-
-
 }
