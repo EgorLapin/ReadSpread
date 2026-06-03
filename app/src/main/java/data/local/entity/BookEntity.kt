@@ -19,6 +19,7 @@ data class Book(
     val publishedDate: String? = null,
     val description: String? = null,
 
+    val fontSize: Int=20,
     // Путь к файлу книги
     val filePath: String,
 
@@ -35,7 +36,7 @@ data class Book(
     val fileSize: Long = 0,
 
     // Общее количество страниц
-    val totalPages: Int = 0,
+    val totalPages: Int = 1,
 
     // Текущая страница
     val currentPage: Int = 1,
@@ -57,7 +58,8 @@ data class Book(
     val lastReadAt: Long? = null,
     val completedAt: Long? = null,
     val updatedAt: Long = System.currentTimeMillis()
-)
+) {
+}
 
 // Статусы книги
 object BookStatus {

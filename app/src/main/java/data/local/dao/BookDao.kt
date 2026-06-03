@@ -51,6 +51,10 @@ interface BookDao {
 
     @Query("UPDATE books SET isFavorite = :isFavorite, updatedAt = :updatedAt WHERE id = :bookId")
     suspend fun updateFavorite(bookId: Long, isFavorite: Boolean, updatedAt: Long)
+
+    @Query("UPDATE books SET fontSize = :fontSize, updatedAt = :updatedAt WHERE id = :bookId")
+    suspend fun updateFontSize(bookId: Long, fontSize: Int, updatedAt: Long = System.currentTimeMillis())
+
     @Query("SELECT COUNT(*) FROM books")
     suspend fun getBooksCount(): Int
 
@@ -59,4 +63,7 @@ interface BookDao {
 
     @Query("SELECT SUM(fileSize) FROM books")
     suspend fun getTotalFilesSize(): Long?
+
+    @Query("UPDATE books SET totalPages = :totalPages, updatedAt = :updatedAt WHERE id = :bookId")
+    suspend fun updateTotalPages(bookId: Long, totalPages: Int, updatedAt: Long)
 }
