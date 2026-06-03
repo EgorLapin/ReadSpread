@@ -22,6 +22,8 @@ import java.io.StringReader
 import java.util.zip.ZipFile
 import javax.inject.Inject
 import kotlin.text.RegexOption
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -127,6 +129,7 @@ class ReaderViewModel @Inject constructor(
             when (book.format.uppercase()) {
                 BookFormat.EPUB -> readEpubText(file)
                 BookFormat.TXT -> file.readText()
+                BookFormat.FB2 -> readFb2Text(file)
                 else -> "Unsupported format: ${book.format}"
             }
         } catch (e: Exception) {
@@ -146,6 +149,44 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    private fun readFb2Text(file: File): String {
+        return try {
+            file.inputStream().bufferedReader(Charsets.UTF_8).use { reader ->
+                val textBuilder = StringBuilder()
+                val parser = Xml.newPullParser()
+                parser.setInput(reader)
+                var eventType = parser.eventType
+                var insideBody = false
+                var insideParagraph = false
+                while (eventType != XmlPullParser.END_DOCUMENT) {
+                    when (eventType) {
+                        XmlPullParser.START_TAG -> {
+                            if (parser.name == "body") insideBody = true
+                            if (insideBody && parser.name == "p") insideParagraph = true
+                        }
+                        XmlPullParser.TEXT -> {
+                            if (insideParagraph) {
+                                textBuilder.append(parser.text.trim())
+                                textBuilder.append(" ")
+                            }
+                        }
+                        XmlPullParser.END_TAG -> {
+                            if (parser.name == "body") insideBody = false
+                            if (parser.name == "p") {
+                                insideParagraph = false
+                                textBuilder.append("\n\n")
+                            }
+                        }
+                    }
+                    eventType = parser.next()
+                }
+                textBuilder.toString().ifEmpty { "No readable text found in FB2 file." }
+            }
+        } catch (e: Exception) {
+            Log.e("READER_VM", "FB2 parsing error", e)
+            "Error reading FB2: ${e.message}"
+        }
+    }
     private fun readEpubText(file: File): String {
         return try {
             ZipFile(file).use { zip ->

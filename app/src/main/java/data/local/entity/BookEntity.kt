@@ -18,7 +18,7 @@ data class Book(
     val publisher: String? = null,
     val publishedDate: String? = null,
     val description: String? = null,
-
+    val customTitle: String? = null,
     val fontSize: Int=20,
     // Путь к файлу книги
     val filePath: String,

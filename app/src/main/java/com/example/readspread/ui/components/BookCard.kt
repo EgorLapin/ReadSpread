@@ -47,7 +47,7 @@ fun BookCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = book.title,
+                    text = book.customTitle ?: book.title,   // <-- отображаем пользовательское название, если есть
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2
@@ -75,12 +75,6 @@ fun BookCard(
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Стр. ${book.currentPage} из ${book.totalPages}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }
@@ -92,7 +86,7 @@ fun BookCover(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val imageUrl = book.coverPath          // исправлено: убрано coverImageUrl
+    val imageUrl = book.coverPath
     var isLoadingError by remember { mutableStateOf(false) }
 
     if (!imageUrl.isNullOrEmpty() && !isLoadingError) {
@@ -101,14 +95,14 @@ fun BookCover(
                 .data(imageUrl)
                 .crossfade(true)
                 .build(),
-            contentDescription = "Обложка ${book.title}",
+            contentDescription = "Обложка ${book.customTitle ?: book.title}",
             modifier = modifier,
             contentScale = ContentScale.Crop,
             onError = { isLoadingError = true }
         )
     } else {
         BookCoverPlaceholder(
-            title = book.title,
+            title = book.customTitle ?: book.title,
             author = book.author,
             modifier = modifier
         )
