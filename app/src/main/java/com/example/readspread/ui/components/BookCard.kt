@@ -75,12 +75,6 @@ fun BookCard(
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Стр. ${book.currentPage} из ${book.totalPages}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
     }
