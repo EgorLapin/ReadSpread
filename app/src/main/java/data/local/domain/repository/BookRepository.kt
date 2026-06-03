@@ -53,6 +53,10 @@ class BookRepository(
         bookDao.updateBook(book)
     }
 
+    suspend fun updateTotalPages(bookId: Long, totalPages: Int) = withContext(Dispatchers.IO) {
+        bookDao.updateTotalPages(bookId, totalPages, System.currentTimeMillis())
+    }
+
     // Удаление книги
     suspend fun deleteBook(book: Book) = withContext(Dispatchers.IO) {
         bookDao.deleteBook(book)
@@ -61,7 +65,9 @@ class BookRepository(
     suspend fun deleteBookById(bookId: Long) = withContext(Dispatchers.IO) {
         bookDao.deleteBookById(bookId)
     }
-
+    suspend fun updateFontSize(bookId: Long, fontSize: Int) = withContext(Dispatchers.IO) {
+        bookDao.updateFontSize(bookId, fontSize)
+    }
     // Обновление прогресса
     suspend fun updateProgress(
         bookId: Long,
@@ -94,6 +100,14 @@ class BookRepository(
     // Обновление избранного
     suspend fun updateFavorite(bookId: Long, isFavorite: Boolean) = withContext(Dispatchers.IO) {
         bookDao.updateFavorite(bookId, isFavorite, System.currentTimeMillis())
+    }
+
+    suspend fun toggleFavorite(bookId: Long) = withContext(Dispatchers.IO) {
+        val book = bookDao.getBookByIdSync(bookId)
+        book?.let {
+            val newFavoriteState = !it.isFavorite
+            bookDao.updateFavorite(bookId, newFavoriteState, System.currentTimeMillis())
+        }
     }
 
     // Статистика
